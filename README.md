@@ -1,4 +1,7 @@
 # sx1231_calculator
+
+[Online version](https://dimhoff.github.io/sx1231_calculator.html)
+
 This is a single page web app that offers an user interface to calculate the
 register values for the Semtech SX1231 chip. The calculator helps in checking
 the limits and dependencies of configuration option. It also tries to visualize
