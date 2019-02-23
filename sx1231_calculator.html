@@ -1,0 +1,1064 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <!--
+Copyright (c) 2019 David Imhoff <dimhoff.devel <at> gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+  -->
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+  <title>SX1231 Calculator</title>
+  <style type="text/css" media="screen">
+body {
+  counter-reset: figures;
+  font-family: "Helvetica Neue",Helvetica,Arial,sans-serif;
+  color: #333;
+}
+h1 {
+  border-bottom: 1px solid #e5e5e5;
+}
+.page {
+  width: 650px;
+  margin: auto;
+}
+
+#svgSpectrum {
+  position: relative;
+  left: 50%;
+  width: 98vw;
+  margin-left: -49vw;
+}
+
+.InputDiv {
+  margin: 10px;
+}
+.InputDiv label {
+  width: 300px;
+  display: inline-block;
+  vertical-align: middle;
+}
+.InputDiv input[type='number'],
+.InputDiv input[type='text']
+{
+  width: 280px;
+}
+.InputDiv select {
+  width: 300px;
+}
+
+.hidden {
+  display: none;
+}
+
+.hiddenUnlimitedLen {
+  display: none;
+}
+
+/* Clip register page to right of screen. For testing only! */
+#pageRegistersDebug {
+  display: none; /**/
+
+  position: fixed;
+  top: 0px;
+  right: 0px;
+  height: 100%;
+  border-left: 3px solid grey;
+  text-align: center;
+  overflow-y: scroll;
+}
+#pageRegistersDebug h1 {
+  margin: 0px;
+}
+#pageRegistersDebug table {
+  font-size: 10px;
+}
+#pageRegistersDebug table .highlight {
+  background: lightgrey;
+}
+#pageRegistersDebug textarea {
+  height: 100%;
+}
+
+figure {
+  margin-left: 0px;
+  margin-right: 0px;
+}
+
+figcaption {
+  font-style: italic;
+}
+figcaption::before {
+  counter-increment: figures;
+  content: "Fig. " counter(figures) ": ";
+}
+
+#PktView {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: center;
+}
+#PktView .PktViewCell {
+  border: 1px solid #333;
+  display: table-cell;
+  vertical-align: middle;
+  padding: 5px;
+}
+.PktViewFieldLabel {
+  font-weight: bold;
+}
+
+table.DioTable {
+  border-collapse: collapse;
+}
+table.DioTable tbody tr td:first-child {
+  width: 25px;
+}
+table.DioTable tbody tr td {
+  width: 150px;
+  text-align: center;
+}
+table.DioTable tbody tr.selected  {
+/*  background: lightblue;*/
+  background: aliceblue;
+}
+table.DioTable tbody tr.selected:hover  {
+/*  background: cornflowerblue;*/
+  background: lightblue;
+}
+table.DioTable tbody tr:hover  {
+  background: ghostwhite;
+  cursor: pointer;
+}
+
+#title {
+  font-size: 42px;
+  font-weight: bold;
+  text-align: center;
+}
+
+#divCopyright {
+  position: fixed;
+  bottom: 0px;
+  left: 0px;
+  margin: 5px;
+  border-radius: 5px;
+
+  /* Only show the copyright symbol at first, show rest on hover */
+  width: 1em;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: all 1s ease-in;
+}
+#divCopyright:hover {
+  width: 420px;
+  background-color: white;
+}
+
+  </style>
+  
+</head>
+<body>
+<div id="title">SX1231 Calculator</div>
+
+<form id="frmSettings" action="javascript:void(0);">
+
+<div class="page">
+  <h1>Generic</h1>
+
+  <div class="InputDiv">
+    <label for="inpFXO">Oscillator Frequency (MHz)</label>
+    <input  id="inpFXO" name="fxo" type=number min="26" max="32" step="0.000001" value="32" required />
+  </div>
+
+  <div class="InputDiv">
+    <label for="outFStep">FSTEP</label>
+    <output id="outFStep" name="fstep" for="inpFXO" />
+  </div>
+
+  <div class="InputDiv">
+    <label for="cbxTcxoInputOn">Use External Clock Instead of Crystal</label>
+    <input  id="cbxTcxoInputOn" name="tcxo_input_on" type="checkbox" />
+  </div>
+</div>
+
+<div class="page">
+  <h1>Radio</h1>
+
+  <div class="InputDiv">
+    <label for="selRadioModulation">Modulation</label>
+    <select id="selRadioModulation" name="modulation" required>
+      <option value="0" selected>FSK</option>
+      <option value="1">OOK</option>
+    </select>
+  </div>
+    
+  <div class="InputDiv">
+    <label for="inpRadioCarrierFreq">Carrier Frequency (MHz)</label>
+    <input  id="inpRadioCarrierFreq" name="carrier_freq" type="number" min="290" max="1020" step="0.000001" value="915" required />
+  </div>
+
+  <div class="FSKOnly">
+    <div class="InputDiv">
+      <label for="inpRadioFreqDev">FSK Frequency Deviation (kHz)</label>
+      <!-- NOTE: constraint: FDEV + bitrate/2 =< 500 kHz  is always met due to limited range of FDev(300k) and BitRate(300k) -->
+      <input  id="inpRadioFreqDev" name="fdev" type="number" min="0.6" max="300" step="0.001" value="5" required />
+    </div>
+
+    <div class="InputDiv">
+      <label for="outRadioModulationIndex">Modulation Index, &beta;=</label>
+      <output id="outRadioModulationIndex" name="modulation_index" for="inpRadioFreqDev inpPayloadBitRate" />
+    </div>
+  </div>
+</div>
+  
+<div class="page">
+  <h1>Transmitter</h1>
+
+  <div class="InputDiv">
+    <label for="selTXPinSelect">Power Amplifier Selection</label>
+    <select id="selTXPinSelect" name="tx_pin_select" required>
+      <option value="0" selected>PA0 on pin RFIO</option>
+      <option value="1">PA1 &amp; PA2 on pin PA_BOOST</option>
+    </select>
+  </div>
+
+  <div class="InputDiv">
+    <label for="inpTXPAPower">Output amplification</label>
+    <input id="inpTXPAPower" name="pa_power" type="number" min="-18" max="17" step="1" value="13">
+    <!-- NOTE: See 3.4.6
+     PA0: -18 + (0-31)  = -18 t/m 13 dBm
+     PA1: -18 + (0-31) = -18 t/m 13 dBm
+     PA1+PA2: -14 + (16-31) = 2 t/m 17 dBm (This only makes sense for > 13 dBm, below PA1 is more efficient.)
+    -->
+  </div>
+
+  <div class="InputDiv">
+    <!-- TODO: disable this for OOK????? register description says only for FSK, But 3.4.5 suggests this is also for OOK -->
+    <label for="selTXPARamp">PA Ramp rise/full time</label>
+    <select id="selTXPARamp" name="pa_ramp" required>
+      <option value="0">3.4 ms</option>
+      <option value="1">2 ms</option>
+      <option value="2">1 ms</option>
+      <option value="3">500 us</option>
+      <option value="4">250 us</option>
+      <option value="5">125 us</option>
+      <option value="6">100 us</option>
+      <option value="7">62 us</option>
+      <option value="8">50 us</option>
+      <option value="9" selected>40 us</option>
+      <option value="10">31 us</option>
+      <option value="11">25 us</option>
+      <option value="12">20 us</option>
+      <option value="13">15 us</option>
+      <option value="14">12 us</option>
+      <option value="15">10 us</option>
+    </select>
+  </div>
+
+  <div class="InputDiv">
+    <label for="selTXModulationShaping">Modulation Shaping</label>
+    <select id="selTXModulationShaping" name="modulation_shaping" required>
+        <!-- Filled based on selected Modulation -->
+    </select>
+  </div>
+
+  <div class="InputDiv">
+    <label for="cbxTXOCPOn">Enable Over-Current Protection</label>
+    <input  id="cbxTXOCPOn" name="ocp_on" type="checkbox" checked />
+  </div>
+
+  <div id="settingsTXOCP" class="InputDiv">
+    <label for="inpTXOCPIMax">Max. Current (mA)</label>
+    <input  id="inpTXOCPIMax" name="ocp_imax" type="number" min="45" max="120" step="5" value="95" required />
+  </div>
+</div>
+
+<div class="page">
+  <h1>Receiver</h1>
+
+  <h2>LNA</h2>
+  <div class="InputDiv">
+    <label for="selRXLNAZin">LNA input impedance</label>
+    <select id="selRXLNAZin" name="lna_zin" required>
+      <option value="0">50 Ohm</option>
+      <option value="1" selected>200 Ohm</option>
+    </select>
+  </div>
+
+  <div class="InputDiv">
+    <label for="selRXLNAGain">LNA gain setting</label>
+    <select id="selRXLNAGain" name="lna_gain_select" required>
+      <option value="0" selected>Automatic</option>
+      <option value="1">Max. Gain</option>
+      <option value="2">Max. – 6 dB</option>
+      <option value="3">Max. – 12 dB</option>
+      <option value="4">Max. – 24 dB</option>
+      <option value="5">Max. – 36 dB</option>
+      <option value="6">Max. – 48 dB</option>
+    </select>
+  </div>
+
+  <div class="InputDiv">
+    <label for="cbxRXContDAGC">Continuous Digital AGC</label>
+    <input  id="cbxRXContDAGC" name="dagc_on" type="checkbox" checked />
+  </div>
+
+  <div class="InputDiv">
+    <label for="cbxRXSensitivityBoost">Enable Sensitivity Boost</label>
+    <input  id="cbxRXSensitivityBoost" name="sensitivity_boost" type="checkbox"/>
+  </div>
+
+  <!-- TODO: Maybee generate Figure 8 with the correct numbers (see 3.5.3.2 for AGC reference value) -->
+
+  <h2>Band Filter</h2>
+
+  <div class="InputDiv">
+    <label for="selRxBw">Single Side Channel Bandwidth (kHz)</label>
+    <select id="selRxBw" name="rx_bw" required>
+    </select>
+    <!-- TODO: contraint: BitRate < 2 x RxBw -->
+  </div>
+
+  <div class="InputDiv FSKOnly">
+    <label for="selRXDccFreq">DC Cancelation cut-off Frequency</label>
+    <select id="selRXDccFreq" name="dcc_freq" required>
+      <option value="0">15.92 % of RxBw</option>
+      <option value="1">7.96 % of RxBw</option>
+      <option value="2" selected>3.98 % of RxBw</option>
+      <option value="3">1.99 % of RxBw</option>
+      <option value="4">0.99 % of RxBw</option>
+      <option value="5">0.50 % of RxBw</option>
+      <option value="6">0.25 % of RxBw</option>
+      <option value="7">0.12 % of RxBw</option>
+    </select>
+  </div>
+
+  <h2>AFC</h2>
+  <div class="InputDiv">
+    <label for="inpRxAfcBw">Single Side Channel Bandwidth for AFC (kHz)</label>
+    <select id="selRxAfcBw" name="afc_bw" required>
+    </select>
+  </div>
+
+  <div class="InputDiv FSKOnly">
+    <label for="selRXDccFreqAfc">AFC DC Cancelation cut-off Frequency</label>
+    <select id="selRXDccFreqAfc" name="dcc_freq_afc" required>
+      <option value="0">15.92 % of RxBw</option>
+      <option value="1">7.96 % of RxBw</option>
+      <option value="2">3.98 % of RxBw</option>
+      <option value="3">1.99 % of RxBw</option>
+      <option value="4" selected>0.99 % of RxBw</option>
+      <option value="5">0.50 % of RxBw</option>
+      <option value="6">0.25 % of RxBw</option>
+      <option value="7">0.12 % of RxBw</option>
+    </select>
+  </div>
+
+  <div class="InputDiv">
+    <label for="cbxRXAfcAutoOn">Auto Start AFC on RX</label>
+    <input  id="cbxRXAfcAutoOn" name="afc_auto_on" type="checkbox" />
+  </div>
+
+  <div class="InputDiv">
+    <label for="cbxRXAfcAutoClearOn">Clear error on AFC start</label>
+    <input  id="cbxRXAfcAutoClearOn" name="afc_auto_clear_on" type="checkbox" />
+  </div>
+
+  <div id="settingsLowBeta">
+    <!-- TODO: constraint: only if modulation index < 2-->
+    <div class="InputDiv">
+      <label for="cbxRXAfcLowBeta">Optimize AFC for low modulation index</label>
+      <input  id="cbxRXAfcLowBeta" name="afc_low_beta_on" type="checkbox" />
+    </div>
+    <div id="settingsAfcLowBeta" class="InputDiv">
+      <label for="inpRXAfcLowBetaOffset">Low modulation index optimalization offset (Hz)</label>
+      <input  id="inpRXAfcLowBetaOffset" name="low_beta_afc_offset" type="number" min="0" max="124440" step="488" value="0" required />
+    </div>
+  </div><!--END: id="settingsLowBeta"-->
+
+  <h2>Demodulator</h2>
+  <div class="InputDiv">
+    <label>RSSI Threshold (dBm)</label>
+    <input  id="inpRXRssiThreshold" name="rssi_threshold" type="number" min="-127.5" max="0" step="0.5" value="-114" required />
+  </div>
+
+  <div class="OOKOnly">
+    <div class="InputDiv">
+      <label for="selDemodOokThreshType">OOK Threshold Type</label>
+      <select id="selDemodOokThreshType" name="ook_thresh_type" required>
+        <option value="0">Fixed</option>
+        <option value="1" selected>Peak</option>
+        <option value="2">Average</option>
+      </select>
+    </div>
+    <!-- TODO: maybee add a figure like 'figure 11' to illustrate threshold meaning and settings -->
+
+    <div id="settingsOokPeakThreshold">
+      <div class="InputDiv">
+        <label for="selDemodOokPeakThreshStep">Threshold decay step</label>
+        <select id="selDemodOokPeakThreshStep" name="ook_peak_thresh_step" required>
+          <option value="0" selected>0.5 dB</option>
+          <option value="1">1.0 dB</option>
+          <option value="2">1.5 dB</option>
+          <option value="3">2.0 dB</option>
+          <option value="4">3.0 dB</option>
+          <option value="5">4.0 dB</option>
+          <option value="6">5.0 dB</option>
+          <option value="7">6.0 dB</option>
+        </select>
+      </div>
+
+      <div class="InputDiv">
+        <label for="selDemodOokPeakThreshDec">Threshold decay time</label>
+        <select id="selDemodOokPeakThreshDec" name="ook_peak_thresh_dec" required>
+          <option value="0" selected>once per chip</option>
+          <option value="1">once every 2 chips</option>
+          <option value="2">once every 4 chips</option>
+          <option value="3">once every 8 chips</option>
+          <option value="4">twice in each chip</option>
+          <option value="5">4 times in each chip</option>
+          <option value="6">8 times in each chip</option>
+          <option value="7">16 times in each chip</option>
+        </select>
+      </div>
+
+      <div class="InputDiv">
+        <!-- TODO: this is actually duplicate of setting below for fixed threshold level -->
+        <label for="inpDemodOokPeakThreshFloor">Threshold noise floor level (dB)</label>
+        <input  id="inpDemodOokPeakThreshFloor" name="ook_peak_thresh_floor" type="number" min="0" max="255" step="1" value="6" required />
+      </div>
+    </div>
+    <div id="settingsOokAverageThreshold">
+      <div class="InputDiv">
+        <label for="selDemodOokAverageThreshFilter">Threshold filter coefficient</label>
+        <!-- TODO: verify the parentheses below the devision line are correct?? and that the point before the pi sign is indeed a multiplication -->
+        <select id="selDemodOokAverageThreshFilter" name="ook_average_thresh_fit" required>
+          <option value="0">f_C ≈ chip rate / (32 * &pi;)</option>
+          <option value="1">f_C ≈ chip rate / (8 * &pi;)</option>
+          <option value="2" selected>f_C ≈ chip rate / (4 * &pi;)</option>
+          <option value="3">f_C ≈ chip rate / (2 * &pi;)</option>
+        </select>
+      </div>
+    </div>
+    <div id="settingsOokFixedThreshold">
+      <div class="InputDiv">
+        <label for="inpDemodOokFixedThreshLevel">Threshold level (dB)</label>
+        <input  id="inpDemodOokFixedThreshLevel" name="ook_fixed_thresh" type="number" min="0" max="255" step="1" value="6" required />
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="page">
+  <h1>Payload</h1>
+
+  <div class="InputDiv">
+    <label for="inpPayloadBitRate">Bit Rate (kbit/s)</label>
+    <input  id="inpPayloadBitRate" name="wanted_bit_rate" type="number" min="1.2" max="300" step="0.001" value="4.8" required />
+  </div>
+
+  <div class="InputDiv">
+    <label for="outPayloadActualBitRate">Actual Bit Rate (bit/s)</label>
+    <output id="outPayloadActualBitRate" name="bit_rate" />
+  </div>
+
+
+  <div class="InputDiv">
+    <label for="selDataMode">Data Operation Mode</label>
+    <select id="selDataMode" name="data_mode" required />
+      <option value="0">Packet Mode</option>
+      <option value="1">Continuous Mode</option>
+    </select>
+  </div>
+
+  <div class="InputDiv ContModeOnly">
+    <label for="cbxContModeBitSync">Enable Bit Synchronizer</label>
+    <input  id="cbxContModeBitSync" name="bit_sync_on" type="checkbox" checked />
+  </div>
+</div>
+
+<div class="page PktModeOnly">
+  <h1>Packet Handeling</h1>
+  <h2>Packet Format</h2>
+  <div class="InputDiv">
+    <label for="inpPktPreambleSize">Preamble Length (Byte)</label>
+    <input  id="inpPktPreambleSize" name="preamble_size" type="number" min="0" max="65535" value="3" required/>
+  </div>
+
+  <div class="InputDiv">
+    <label for="cbxPktSyncOn">Enable Sync Word</label>
+    <input  id="cbxPktSyncOn" name="sync_on" type="checkbox" checked />
+  </div>
+
+  <div id="syncWordSettings">
+    <div class="InputDiv">
+      <label for="inpPktSyncSize">Sync Word Length (Byte)</label>
+      <input  id="inpPktSyncSize" name="sync_size" type="number" min="1" max="8" value="4" required/>
+    </div>
+
+    <div class="InputDiv">
+      <label for="inpPktSyncValue">Sync Word</label>
+      <input  id="inpPktSyncValue" name="sync_value" type="text" minlength="2" maxlength="16" pattern="([0-9A-Fa-f]{2})+" value="01010101" />
+    </div>
+
+    <div class="InputDiv">
+      <label for="inpPktSyncTol">Sync Word max. bit errors</label>
+      <input  id="inpPktSyncTol" name="sync_tol" type="number" min="0" max="7" value="0" required/>
+    </div>
+  </div>
+
+  <div class="InputDiv">
+    <label for="selPktFormat">Packet Format</label>
+    <select id="selPktFormat" name="packet_format" required>
+      <option value="0" selected>Fixed Length</option>
+      <option value="1">Variable Length</option>
+      <option value="2">Unlimited Length</option>
+    </select>
+  </div>
+
+  <div id="pktLenSettings" class="InputDiv">
+    <label id="lblPktLenFixed" for="inpPayloadLen">Payload Message Length (Byte)<br>(excl. address byte)</label>
+    <label id="lblPktLenVar" for="inpPayloadLen">Max. RX Payload Message Length (Byte)<br>(excl. length and address bytes)</label>
+    <input  id="inpPayloadLen" name="payload_msg_len" type="number" min="0" max="255" value="64" required/>
+  </div>
+  <!-- TODO: If unlimited length packets(pkt_var_len = false && payload_len = 0) there are extra constraints on  manchester/whitening encoding, CRC checks and address filtering see par. 5.5.2.3 -->
+  <!-- TODO: if variable length packets and payload_len == 255 then the length byte will not be in the fifo (par 5.5.7.3) -->
+
+  <div class="InputDiv hideIfUnlimitedLenWithoutSync">
+    <label for="selPktEncoding">Encoding</label>
+    <select id="selPktEncoding" name="encoding" required>
+      <option value="0" selected>None</option>
+      <option value="1">Manchester</option>
+      <option value="2">Whitening</option>
+    </select>
+  </div>
+
+  <div class="InputDiv">
+    <label for="cbxPktCrcOn">Enable CRC-16-CCITT checksum<span id="lblCrcTxOnly"> (TX Only)</span></label>
+    <input  id="cbxPktCrcOn" name="crc_on" type="checkbox" checked />
+  </div>
+
+  <div class="hideIfUnlimitedLen">
+    <div id="pktCrcSettings" class="InputDiv">
+      <label for="cbxPktCrcAutoClearOff">Do not clear FIFO on CRC error</label>
+      <input  id="cbxPktCrcAutoClearOff" name="crc_auto_clear_off" type="checkbox" />
+    </div>
+  </div><!-- class="hideIfUnlimitedLen" -->
+
+  <div class="hideIfUnlimitedLenWithoutSync">
+    <div class="InputDiv">
+      <label for="selPktAddrFilt">Address Filtering</label>
+      <select id="selPktAddrFilt" name="address_filtering" required>
+        <option value="0" selected>None</option>
+        <option value="1">Node Address</option>
+        <option value="2">Node + Broadcast Address</option>
+      </select>
+    </div>
+
+    <div id="pktNodeAddrSettings" class="InputDiv">
+      <label for="inpPktNodeAddr">Node Address (0-255)</label>
+      <input  id="inpPktNodeAddr" name="node_address" type="number" min="0" max="255" value="0" required/>
+    </div>
+
+    <div id="pktBcastAddrSettings" class="InputDiv">
+      <label for="inpPktBcastAddr">Broadcast Address (0-255)</label>
+      <input  id="inpPktBcastAddr" name="broadcast_address" type="number" min="0" max="255" value="0" required/>
+    </div>
+  </div><!-- class="hideIfUnlimitedLenWithoutSync" -->
+
+  <div class="hideIfUnlimitedLen">
+    <div class="InputDiv">
+      <label for="cbxPktAesOn">Enable AES-128 Encryption</label>
+      <input  id="cbxPktAesOn" name="aes_on" type="checkbox" />
+    </div>
+
+    <div id="pktAesSettings" class="InputDiv">
+      <label for="inpPktAesKey">AES Key</label>
+      <input  id="inpPktAesKey" name="aes_key" type="text" minlength="32" maxlength="32" pattern="[0-9A-Fa-f]{32}" placeholder="hexadecimal key (ie. 001122...ddeeff)" required />
+    </div>
+  </div><!-- class="hideIfUnlimitedLen" -->
+
+  <figure>
+    <div id="PktView">
+      <div id="PktViewPreamble" class="PktViewCell">
+        <div class="PktViewFieldLabel">Preamble</div>
+        <!-- TODO: verify that preamble is 0xAA and not 0x55 -->
+        <span id="lblPktPreambleLen">10</span> x '0xAA'
+      </div>
+      <div id="PktViewSync" class="PktViewCell">
+        <div class="PktViewFieldLabel">Sync. Word</div>
+        <span id="lblPktSyncValue">
+          0x01 0x01 0x01 0x01 0x01 0x01 0x01 0x01
+        </span>
+      </div>
+      <div id="PktViewEncoded" class="PktViewCell">
+        <div style="text-align: left; width: 100%; font-style: italic;"><span id="lblPktEncoding">Manchester</span>:</div>
+        <div id="PktViewPayload" class="PktViewCell">
+          <div style="text-align: left; width: 100%; font-style: italic;">Payload:</div>
+          <div id="PktViewLength" class="PktViewCell">
+            <div class="PktViewFieldLabel">Length</div>
+            <span id="lblPktLength">
+              1-byte
+            </span>
+          </div>
+          <div id="PktViewAddress" class="PktViewCell">
+            <div class="PktViewFieldLabel">Address</div>
+            1-byte
+          </div>
+          <div id="PktViewEncrypted" class="PktViewCell">
+            <div style="text-align: left; width: 100%; font-style: italic;">Encrypted:</div>
+            <div id="PktViewMsg" class="PktViewCell">
+              <div class="PktViewFieldLabel">Message</div>
+              <span id="lblPktMsgLen">upto 64</span> bytes
+            </div>
+            <div id="PktViewPadding" class="PktViewCell">
+              <div class="PktViewFieldLabel">padding</div>
+              <span id="lblPktPadLen">upto 15</span> * '00'
+            </div>
+          </div>
+        </div>
+        <div id="PktViewCrc" class="PktViewCell">
+          <div class="PktViewFieldLabel">CRC</div>
+          2-byte
+        </div>
+      </div>
+    </div>
+    <figcaption>Packet structure</figcaption>
+  </figure>
+
+
+  <h2>Packet Engine</h2>
+  <div class="InputDiv">
+    <label for="selPktFifoFillCondition">FIFO Fill Condition</label>
+    <select id="selPktFifoFillCondition" name="fifo_fill_condition" required>
+      <option value="0" selected>On SyncAddress interrupt</option>
+      <option value="1">If FifoFillCondition is set</option>
+    </select>
+  </div>
+
+  <div class="InputDiv">
+    <label for="selPktTxStartCondition">TX Start Condition</label>
+    <select id="selPktTxStartCondition" name="tx_start_condition" required>
+      <option value="0">Fifo byte count &gt; Fifo Threshold</option>
+      <option value="1" selected>Fifo byte count &gt; 0</option>
+    </select>
+  </div>
+
+  <div class="InputDiv">
+    <label for="inpPktFifoThreshold">FifoLevel Interrupt Threshold</label>
+    <input  id="inpPktFifoThreshold" name="fifo_threshold" type="number" min="0" max="127" value="15" required/>
+  </div>
+
+  <div class="InputDiv">
+    <label for="selPktInterPacketRxDelay">Inter-packet RX Delay</label>
+    <select id="selPktInterPacketRxDelay" name="inter_packet_rx_delay" required>
+      <!-- Filled based on Bit rate-->
+    </select>
+  </div>
+
+  <div class="InputDiv">
+    <label for="cbxPktAutoRxRestartOn">Auto Restart RX after InterPacketRxDelay</label>
+    <input  id="cbxPktAutoRxRestartOn" name="auto_rx_restart_on" type="checkbox" checked/>
+  </div>
+
+  <h2>Auto Modes</h2>
+  <div class="InputDiv">
+    <label for="cbxPktAutoModesOn">Enable Auto Modes</label>
+    <input  id="cbxPktAutoModesOn" name="auto_modes_on" type="checkbox" />
+  </div>
+
+  <div id="settingsAutoModes">
+    <div class="InputDiv">
+      <label for="selAMEnterCondition">Enter Condition</label>
+      <select id="selAMEnterCondition" name="am_enter_condition" required>
+        <option value="" disabled selected style="display: none"></option>
+        <option value="1">Rising edge of FifoNotEmpty</option>
+        <option value="2">Rising edge of FifoLevel</option>
+        <option value="3">Rising edge of CrcOk</option>
+        <option value="4">Rising edge of PayloadReady</option>
+        <option value="5">Rising edge of SyncAddress</option>
+        <option value="6">Rising edge of PacketSent</option>
+        <option value="7">Falling edge of FifoNotEmpty (i.e. FIFO empty)</option>
+      </select>
+    </div>
+
+    <div class="InputDiv">
+      <label for="selAMExitCondition">Exit Condition</label>
+      <select id="selAMExitCondition" name="am_exit_condition" required>
+        <option value="" disabled selected style="display: none"></option>
+        <option value="1">Falling edge of FifoNotEmpty (i.e. FIFO empty)</option>
+        <option value="2">Rising edge of FifoLevel or Timeout</option>
+        <option value="3">Rising edge of CrcOk or Timeout</option>
+        <option value="4">Rising edge of PayloadReady or Timeout</option>
+        <option value="5">Rising edge of SyncAddress or Timeout</option>
+        <option value="6">Rising edge of PacketSent</option>
+        <option value="7">Rising edge of Timeout</option>
+      </select>
+    </div>
+
+    <div class="InputDiv">
+      <label for="selAMIntermediateMode">Intermediate Mode</label>
+      <select id="selAMIntermediateMode" name="am_intermediate_mode" required>
+        <option value="0" selected>Sleep mode (SLEEP)</option>
+        <option value="1">Standby mode (STDBY)</option>
+        <option value="2">Receiver mode (RX)</option>
+        <option value="3">Transmitter mode (TX)</option>
+      </select>
+    </div>
+  </div>
+
+</div>
+
+<div class="page">
+  <h1>Digital I/O Pin Mapping</h1>
+
+  <h2>Clock Out</h2>
+
+  <div class="InputDiv">
+    <label for="selDioClkOut">CLKOUT frequency</label>
+    <select id="selDioClkOut" name="clk_out" required>
+      <!-- Filled based on FXOSC -->
+    </select>
+  </div>
+
+  <h2>DIO0</h2>
+  <table class="DioTable ContModeOnly">
+    <thead>
+      <th><!-- Radio Button --></th>
+      <th>Sleep</th>
+      <th>Stdby</th>
+      <th>FS</th>
+      <th>RX</th>
+      <th>TX</th>
+    </thead>
+    <tbody>
+      <tr><td><input type="radio" name="dio_0_mapping_cont" value="0" checked /></td><td>-         </td><td>-         </td><td>PllLock   </td><td>SyncAddress </td><td>PllLock</td></tr>
+      <tr><td><input type="radio" name="dio_0_mapping_cont" value="1" /></td><td>-         </td><td>-         </td><td>-         </td><td>Timeout     </td><td>TxReady</td></tr>
+      <tr><td><input type="radio" name="dio_0_mapping_cont" value="2" /></td><td>LowBat    </td><td>LowBat    </td><td>LowBat    </td><td>Rssi        </td><td>LowBat</td></tr>
+      <tr><td><input type="radio" name="dio_0_mapping_cont" value="3" /></td><td>ModeReady </td><td>ModeReady </td><td>ModeReady </td><td>ModeReady   </td><td>ModeReady</td></tr>
+    </tbody>
+  </table>
+
+  <table class="DioTable PktModeOnly">
+    <thead>
+      <th><!-- Radio Button --></th>
+      <th>Sleep</th>
+      <th>Stdby</th>
+      <th>FS</th>
+      <th>RX</th>
+      <th>TX</th>
+    </thead>
+    <tbody>
+      <tr><td><input type="radio" name="dio_0_mapping_pkt" value="0" checked /></td><td>-      </td><td>-      </td><td>-       </td><td>CrcOk        </td><td>PacketSent</td></tr>
+      <tr><td><input type="radio" name="dio_0_mapping_pkt" value="1" /></td><td>-      </td><td>-      </td><td>-       </td><td>PayloadReady </td><td>TxReady</td></tr>
+      <tr><td><input type="radio" name="dio_0_mapping_pkt" value="2" /></td><td>LowBat </td><td>LowBat </td><td>LowBat  </td><td>SyncAddress  </td><td>LowBat</td></tr>
+      <tr><td><input type="radio" name="dio_0_mapping_pkt" value="3" /></td><td>-      </td><td>-      </td><td>PllLock </td><td>Rssi         </td><td>PllLock</td></tr>
+    </tbody>
+  </table>
+
+
+  <h2>DIO1</h2>
+  <table class="DioTable ContModeOnly">
+    <thead>
+      <th><!-- Radio Button --></th>
+      <th>Sleep</th>
+      <th>Stdby</th>
+      <th>FS</th>
+      <th>RX</th>
+      <th>TX</th>
+    </thead>
+    <tbody>
+      <tr><td><input type="radio" name="dio_1_mapping_cont" value="0" checked /></td><td>-      </td><td>-      </td><td>-       </td><td>Dclk        </td><td>Dclk</td></tr>
+      <tr><td><input type="radio" name="dio_1_mapping_cont" value="1" /></td><td>-      </td><td>-      </td><td>-       </td><td>RxReady     </td><td>TxReady</td></tr>
+      <tr><td><input type="radio" name="dio_1_mapping_cont" value="2" /></td><td>LowBat </td><td>LowBat </td><td>LowBat  </td><td>LowBat      </td><td>LowBat</td></tr>
+      <tr><td><input type="radio" name="dio_1_mapping_cont" value="3" /></td><td>-      </td><td>-      </td><td>PllLock </td><td>SyncAddress </td><td>PllLock</td></tr>
+    </tbody>
+  </table>
+
+  <table class="DioTable PktModeOnly">
+    <thead>
+      <th><!-- Radio Button --></th>
+      <th>Sleep</th>
+      <th>Stdby</th>
+      <th>FS</th>
+      <th>RX</th>
+      <th>TX</th>
+    </thead>
+    <tbody>
+      <tr><td><input type="radio" name="dio_1_mapping_pkt" value="0" checked /></td><td>FifoLevel    </td><td>FifoLevel    </td><td>FifoLevel    </td><td>FifoLevel    </td><td>FifoLevel</td></tr>
+      <tr><td><input type="radio" name="dio_1_mapping_pkt" value="1" /></td><td>FifoFull     </td><td>FifoFull     </td><td>FifoFull     </td><td>FifoFull     </td><td>FifoFull</td></tr>
+      <tr><td><input type="radio" name="dio_1_mapping_pkt" value="2" /></td><td>FifoNotEmpty </td><td>FifoNotEmpty </td><td>FifoNotEmpty </td><td>FifoNotEmpty </td><td>FifoNotEmpty</td></tr>
+      <tr><td><input type="radio" name="dio_1_mapping_pkt" value="3" /></td><td>-            </td><td>-            </td><td>PllLock      </td><td>Timeout      </td><td>PllLock</td></tr>
+    </tbody>
+  </table>
+
+  <h2>DIO2</h2>
+  <table class="DioTable ContModeOnly">
+    <thead>
+      <th><!-- Radio Button --></th>
+      <th>Sleep</th>
+      <th>Stdby</th>
+      <th>FS</th>
+      <th>RX</th>
+      <th>TX</th>
+    </thead>
+    <tbody>
+      <tr><td><input type="radio" name="dio_2_mapping_cont" value="0" checked /></td><td> - </td><td> - </td><td> - </td><td> Data </td><td> Data </td></tr>
+      <tr><td><input type="radio" name="dio_2_mapping_cont" value="1" /></td><td> - </td><td> - </td><td> - </td><td> Data </td><td> Data </td></tr>
+      <tr><td><input type="radio" name="dio_2_mapping_cont" value="2" /></td><td> - </td><td> - </td><td> - </td><td> Data </td><td> Data </td></tr>
+      <tr><td><input type="radio" name="dio_2_mapping_cont" value="3" /></td><td> - </td><td> - </td><td> - </td><td> Data </td><td> Data </td></tr>
+    </tbody>
+  </table>
+
+  <table class="DioTable PktModeOnly">
+    <thead>
+      <th><!-- Radio Button --></th>
+      <th>Sleep</th>
+      <th>Stdby</th>
+      <th>FS</th>
+      <th>RX</th>
+      <th>TX</th>
+    </thead>
+    <tbody>
+      <tr><td><input type="radio" name="dio_2_mapping_pkt" value="0" checked /></td><td>FifoNotEmpty </td><td>FifoNotEmpty </td><td>FifoNotEmpty </td><td>FifoNotEmpty </td><td>FifoNotEmpty</td></tr>
+      <tr><td><input type="radio" name="dio_2_mapping_pkt" value="1" /></td><td>-            </td><td>-            </td><td>-            </td><td>Data         </td><td>Data</td></tr>
+      <tr><td><input type="radio" name="dio_2_mapping_pkt" value="2" /></td><td>LowBat       </td><td>LowBat       </td><td>LowBat       </td><td>LowBat       </td><td>LowBat</td></tr>
+      <tr><td><input type="radio" name="dio_2_mapping_pkt" value="3" /></td><td>AutoMode     </td><td>AutoMode     </td><td>AutoMode     </td><td>AutoMode     </td><td>AutoMode</td></tr>
+    </tbody>
+  </table>
+
+  <h2>DIO3</h2>
+  <table class="DioTable ContModeOnly">
+    <thead>
+      <th><!-- Radio Button --></th>
+      <th>Sleep</th>
+      <th>Stdby</th>
+      <th>FS</th>
+      <th>RX</th>
+      <th>TX</th>
+    </thead>
+    <tbody>
+      <tr><td><input type="radio" name="dio_3_mapping_cont" value="0" checked /></td><td>-        </td><td>-        </td><td>-        </td><td>Rssi     </td><td>TxReady</td></tr>
+      <tr><td><input type="radio" name="dio_3_mapping_cont" value="1" /></td><td>-        </td><td>-        </td><td>-        </td><td>RxReady  </td><td>TxReady</td></tr>
+      <tr><td><input type="radio" name="dio_3_mapping_cont" value="2" /></td><td>AutoMode </td><td>AutoMode </td><td>AutoMode </td><td>AutoMode </td><td>AutoMode</td></tr>
+      <tr><td><input type="radio" name="dio_3_mapping_cont" value="3" /></td><td>-        </td><td>-        </td><td>-        </td><td>Timeout  </td><td>TxReady</td></tr>
+    </tbody>
+  </table>
+
+  <table class="DioTable PktModeOnly">
+    <thead>
+      <th><!-- Radio Button --></th>
+      <th>Sleep</th>
+      <th>Stdby</th>
+      <th>FS</th>
+      <th>RX</th>
+      <th>TX</th>
+    </thead>
+    <tbody>
+      <tr><td><input type="radio" name="dio_3_mapping_pkt" value="0" checked /></td><td>FifoFull </td><td>FifoFull </td><td>FifoFull </td><td>FifoFull    </td><td>FifoFull</td></tr>
+      <tr><td><input type="radio" name="dio_3_mapping_pkt" value="1" /></td><td>-        </td><td>-        </td><td>-        </td><td>Rssi        </td><td>TxReady</td></tr>
+      <tr><td><input type="radio" name="dio_3_mapping_pkt" value="2" /></td><td>LowBat   </td><td>LowBat   </td><td>LowBat   </td><td>SyncAddress </td><td>LowBat</td></tr>
+      <tr><td><input type="radio" name="dio_3_mapping_pkt" value="3" /></td><td>-        </td><td>-        </td><td>PllLock  </td><td>PllLock     </td><td>PllLock</td></tr>
+    </tbody>
+  </table>
+
+  <h2>DIO4</h2>
+  <table class="DioTable ContModeOnly">
+    <thead>
+      <th><!-- Radio Button --></th>
+      <th>Sleep</th>
+      <th>Stdby</th>
+      <th>FS</th>
+      <th>RX</th>
+      <th>TX</th>
+    </thead>
+    <tbody>
+      <tr><td><input type="radio" name="dio_4_mapping_cont" value="0" checked /></td><td>-      </td><td>-      </td><td>-       </td><td>Timeout     </td><td>TxReady</td></tr>
+      <tr><td><input type="radio" name="dio_4_mapping_cont" value="1" /></td><td>-      </td><td>-      </td><td>-       </td><td>RxReady     </td><td>TxReady</td></tr>
+      <tr><td><input type="radio" name="dio_4_mapping_cont" value="2" /></td><td>LowBat </td><td>LowBat </td><td>LowBat  </td><td>SyncAddress </td><td>LowBat </td></tr>
+      <tr><td><input type="radio" name="dio_4_mapping_cont" value="3" /></td><td>-      </td><td>-      </td><td>PllLock </td><td>PllLock     </td><td>PllLock</td></tr>
+    </tbody>
+  </table>
+
+  <table class="DioTable PktModeOnly">
+    <thead>
+      <th><!-- Radio Button --></th>
+      <th>Sleep</th>
+      <th>Stdby</th>
+      <th>FS</th>
+      <th>RX</th>
+      <th>TX</th>
+    </thead>
+    <tbody>
+      <tr><td><input type="radio" name="dio_4_mapping_pkt" value="0" checked /></td><td>-      </td><td>-      </td><td>-       </td><td>Timeout </td><td>ModeReady</td></tr>
+      <tr><td><input type="radio" name="dio_4_mapping_pkt" value="1" /></td><td>-      </td><td>-      </td><td>-       </td><td>Rssi    </td><td>TxReady</td></tr>
+      <tr><td><input type="radio" name="dio_4_mapping_pkt" value="2" /></td><td>LowBat </td><td>LowBat </td><td>LowBat  </td><td>RxReady </td><td>LowBat</td></tr>
+      <tr><td><input type="radio" name="dio_4_mapping_pkt" value="3" /></td><td>-      </td><td>-      </td><td>PllLock </td><td>PllLock </td><td>PllLock</td></tr>
+    </tbody>
+  </table>
+
+  <h2>DIO5</h2>
+  <table class="DioTable ContModeOnly">
+    <thead>
+      <th><!-- Radio Button --></th>
+      <th>Sleep</th>
+      <th>Stdby</th>
+      <th>FS</th>
+      <th>RX</th>
+      <th>TX</th>
+    </thead>
+    <tbody>
+      <tr><td><input type="radio" name="dio_5_mapping_cont" value="0" checked /></td><td>-         </td><td>ClkOut    </td><td>ClkOut   </td><td>ClkOut   </td><td>ClkOut</td></tr>
+      <tr><td><input type="radio" name="dio_5_mapping_cont" value="1" /></td><td>-         </td><td>-         </td><td>-        </td><td>Rssi     </td><td>ClkOut</td></tr>
+      <tr><td><input type="radio" name="dio_5_mapping_cont" value="2" /></td><td>LowBat    </td><td>LowBat    </td><td>LowBat   </td><td>LowBat   </td><td>LowBat</td></tr>
+      <tr><td><input type="radio" name="dio_5_mapping_cont" value="3" /></td><td>ModeReady </td><td>ModeReady </td><td>ModeReady</td><td>ModeReady</td><td>ModeReady</td></tr>
+    </tbody>
+  </table>
+
+  <table class="DioTable PktModeOnly">
+    <thead>
+      <th><!-- Radio Button --></th>
+      <th>Sleep</th>
+      <th>Stdby</th>
+      <th>FS</th>
+      <th>RX</th>
+      <th>TX</th>
+    </thead>
+    <tbody>
+      <tr><td><input type="radio" name="dio_5_mapping_pkt" value="0" checked /></td><td>-         </td><td>ClkOut    </td><td>ClkOut    </td><td>ClkOut    </td><td>ClkOut</td></tr>
+      <tr><td><input type="radio" name="dio_5_mapping_pkt" value="1" /></td><td>-         </td><td>-         </td><td>-         </td><td>Data      </td><td>Data</td></tr>
+      <tr><td><input type="radio" name="dio_5_mapping_pkt" value="2" /></td><td>LowBat    </td><td>LowBat    </td><td>LowBat    </td><td>LowBat    </td><td>LowBat</td></tr>
+      <tr><td><input type="radio" name="dio_5_mapping_pkt" value="3" /></td><td>ModeReady </td><td>ModeReady </td><td>ModeReady </td><td>ModeReady </td><td>ModeReady</td></tr>
+    </tbody>
+  </table>
+
+</div>
+
+<div class="page hidden">
+  <h1>Startup Timing</h1>
+  <!-- TODO: -->
+</div>
+
+<div class="page">
+  <h1>Spectrum</h1>
+  <figure>
+<!-- TODO:
+ - LEGEND: red = blocked by RX Band filter, blue = blocked by AFC band filer
+ - bandwidth of OOK is currently the cos^2() bw, don't know if this is correct...
+ - Modulation shaping is completly left out
+ - DCC filtering not visible
+-->
+<svg id="svgSpectrum" height="450" width="100%">
+ <defs>  
+   <clipPath id="clip-neg">  
+     <rect x="0" y="0" width="50%" height="100%" />  
+   </clipPath>
+   <clipPath id="clip-pos">  
+     <rect x="50%" y="0" width="100%" height="100%" />  
+   </clipPath>
+ </defs>
+ 
+  <line id="lineXAxis" x1="0" y1="392" x2="100%" y2="392" stroke="black" stroke-width="2" fill="none" />
+  <line id="lineYAxis" x1="50%" y1="0" x2="50%" y2="392" stroke="black" stroke-width="2" fill="none" />
+  
+  <path id="curvePosRight" d="" stroke="blue" stroke-width="5" fill="none" clip-path="url(#clip-pos)" />
+  <path id="curvePosLeft" d="" stroke="blue" stroke-width="5" fill="none" clip-path="url(#clip-pos)" />
+
+  <path id="curveNegRight" d="" stroke="blue" stroke-width="5" fill="none" clip-path="url(#clip-neg)" />
+  <path id="curveNegLeft" d="" stroke="blue" stroke-width="5" fill="none" clip-path="url(#clip-neg)" />
+ 
+  <rect id="rectRxFiltNeg" x="0" y="0" width="0" height="390" fill="coral" fill-opacity="0.2" />  
+  <rect id="rectRxFiltPos" x="100%" y="0" width="100%" height="390" fill="coral" fill-opacity="0.2" />  
+
+  <rect id="rectAfcFiltNeg" x="0" y="0" width="0" height="390" fill="blue" fill-opacity="0.2" />  
+  <rect id="rectAfcFiltPos" x="100%" y="0" width="100%" height="390" fill="blue" fill-opacity="0.2" />  
+  
+  <polygon id="arrowBWLeft" points="100,430 110,425 107.5,430 110,435" />
+  <polygon id="arrowBWRight" points="400,430 390,425 392.5,430 390,435" />
+  <line id="lineBW" x1="105" y1="430" x2="395" y2="430" stroke="black" stroke-width="2" />
+
+  <g stroke="black" stroke-width="2" stroke-dasharray="2">
+    <line id="lineBWMarkLeft" x1="0" y1="390" x2="0" y2="180" class="OOKOnly"/>
+    <line id="lineBWMarkRight" x1="0" y1="390" x2="0" y2="180" class="OOKOnly"/>
+    <line id="lineFreqLow" x1="125" y1="390" x2="125" y2="10" class="FSKOnly"/>
+    <line id="lineFreqHigh" x1="375" y1="390" x2="375" y2="10" class="FSKOnly"/>
+  </g> 
+  <g font-size="16" font-family="sans-serif" fill="black" stroke="none" text-anchor="middle">
+    <text id="lblFreqLow" x="125" y="390"  dy="1em"></text>
+    <text id="lblFreqHigh" x="375" y="390" dy="1em" class="FSKOnly"></text>
+    <text id="lblFreqBWLow" x="125" y="390"  dy="2em"></text>
+    <text id="lblFreqBWHigh" x="375" y="390"  dy="2em"></text>
+    <text id="lblBW20dB" x="50%" y="430" dy="1em"></text>
+  </g>
+  Your browser does not support inline SVG.
+</svg>
+
+    <div style="text-align: center; margin: 20px auto;">
+      Legend:
+      <svg height="1em" width="1em">
+        <rect x="0" y="0" width="100%" height="100%" fill="coral" fill-opacity="0.2" />  
+      </svg>
+      = Filtered by RX filter
+      <svg height="1em" width="1em">
+        <rect x="0" y="0" width="100%" height="100%" fill="blue" fill-opacity="0.2" />  
+      </svg>
+      = Filtered by AFC filter
+    </div>
+
+    <figcaption style="text-align: center;">Artist impression of power spectral density.<br> (NOTE: This is in no way a complete or accurate simulation of the PSD.)</figcaption>
+  </figure>
+</div>
+
+<div class="page">
+  <h1>Register values</h1>
+
+  <div>
+    <button id="btnRegExport" type="button">Export</button>
+    <button id="btnRegImport" type="button">Import</button>
+  </div>
+
+  <textarea id="txtRegVal" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" style="width: 100%; min-height: 300px">
+  </textarea>
+</div>
+</form>
+
+<div id="pageRegistersDebug">
+  <table id="tblRegisterDebugView" style="border-collapse: collapse">
+    <thead>
+      <th>Addr</th>
+      <th>Value</th>
+      <th>Prev.</th>
+      <th>POR</th>
+    </thead>
+    <tbody>
+    </tbody>
+  </table>
+</div>
+
+<div id="divCopyright">
+  &copy;
+  <span id="spnCopyrightText">
+    License: MIT | Copyright 2019 David Imhoff | Version: 0.1
+  </span>
+</div>
+
+<script src="sx1231_calculator.js"></script>
+</body>
+</html>
