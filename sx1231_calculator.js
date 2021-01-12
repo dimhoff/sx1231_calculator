@@ -1932,10 +1932,23 @@ function exportRegValues() {
 
   const regs = generateRegValues();
 
-  // Filter out registers with the default value
+  // Filter out RF frequency registers only if they all have default values.
+  // SX1231 latches the RF frequency registers after the LSB has been written.
+
+  if (regs[0x07] == POR_REGS[0x07] &&
+      regs[0x08] == POR_REGS[0x08] &&
+      regs[0x09] == POR_REGS[0x09]) {
+    delete regs[0x07];
+    delete regs[0x08];
+    delete regs[0x09];
+  }
+
+  // Filter out registers with the default value, except the RF frequency registers
   for (const addr in regs) {
-    if (regs[addr] == POR_REGS[addr]) {
-      delete regs[addr];
+    if(addr != 0x07 && addr != 0x08 && addr != 0x09 ) {
+      if (regs[addr] == POR_REGS[addr]) {
+        delete regs[addr];
+      }
     }
   }
 
